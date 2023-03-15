@@ -3,6 +3,9 @@ uuid = "b8c1c048-cf81-46c6-9da0-18c1d99e41f2"
 authors = ["Tim Holy <tim.holy@gmail.com> and contributors"]
 version = "1.0.0-DEV"
 
+[deps]
+Unicode = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
+
 [compat]
 julia = "1"
 
