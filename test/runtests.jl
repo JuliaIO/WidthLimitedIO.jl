@@ -75,11 +75,13 @@ end
     print(limiter, "cde")
     @test !iswritable(limiter)
     take!(limiter)
-    print(limiter, "ab")
-    closewrite(limiter)
-    @test !iswritable(limiter)
-    print(limiter, "cde")
-    @test String(take!(limiter)) == "ab"
+    if isdefined(Base, :closewrite)
+        print(limiter, "ab")
+        closewrite(limiter)
+        @test !iswritable(limiter)
+        print(limiter, "cde")
+        @test String(take!(limiter)) == "ab"
+    end
 
     # ANSI terminal characters
     limiter = TextWidthLimiter(IOBuffer(), 5)

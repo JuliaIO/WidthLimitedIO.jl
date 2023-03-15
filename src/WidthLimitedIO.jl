@@ -83,20 +83,22 @@ end
 
 Base.iswritable(limiter::TextWidthLimiter) = !limiter.isclosed || limiter.seen_esc
 
-"""
-    closewrite(limiter::TextWidthLimiter)
+if isdefined(Base, :closewrite)
+    """
+        closewrite(limiter::TextWidthLimiter)
 
-Turn off further writing to `limiter`. In many cases, `iswritable(limiter)` will now return `false`,
-but it is not an error to attempt to write further values to `limiter`.
+    Turn off further writing to `limiter`. In many cases, `iswritable(limiter)` will now return `false`,
+    but it is not an error to attempt to write further values to `limiter`.
 
-One exception is if ANSI terminal escape codes (e.g., to change text color) had been previously
-written to `limiter`; in that case `iswritable(limiter)` will still return `true`, but henceforth
-the only characters written to `limiter` will be further escape codes. This will ensure, e.g., that
-text color gets reset to its original state.
+    One exception is if ANSI terminal escape codes (e.g., to change text color) had been previously
+    written to `limiter`; in that case `iswritable(limiter)` will still return `true`, but henceforth
+    the only characters written to `limiter` will be further escape codes. This will ensure, e.g., that
+    text color gets reset to its original state.
 
-Thus, it's acceptable to check `iswritable(limiter)` and skip further writing if the return value is `false`.
-"""
-Base.closewrite(limiter::TextWidthLimiter) = limiter.isclosed = true
+    Thus, it's acceptable to check `iswritable(limiter)` and skip further writing if the return value is `false`.
+    """
+    Base.closewrite(limiter::TextWidthLimiter) = limiter.isclosed = true
+end
 
 function Base.take!(limiter::TextWidthLimiter)
     @assert limiter.esc_status ∈ (NONE, FINAL, C0)
