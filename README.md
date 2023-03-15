@@ -42,3 +42,7 @@ abcd…
 ```
 
 in red, while avoiding any corruption of any other on-screen display.
+
+`TextWidthLimiter` was initially in [Cthulhu.jl](https://github.com/JuliaDebug/Cthulhu.jl),
+but was redesigned and moved here to allow others to take advantage of it.
+It may be particularly useful for terminal programs where you may want to limit options to a single line.
