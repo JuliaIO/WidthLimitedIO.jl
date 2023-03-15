@@ -2,7 +2,7 @@ module WidthLimitedIO
 
 using Unicode
 
-export TextWidthLimiter, ansi_esc_status
+export TextWidthLimiter, ansi_esc_status, ANSIEscapeError
 
 include("ansi_escapes.jl")
 
@@ -18,64 +18,68 @@ end
 TextWidthLimiter(io::IO, limit) = TextWidthLimiter(io, iszero(limit), 0, limit, NONE, false, IOBuffer())
 Base.get(limiter::TextWidthLimiter, key, default) = get(limiter.io, key, default)
 
+getiotmp(io::TextWidthLimiter) = io.iotmp
+getiotmp(ioctx::IOContext{TextWidthLimiter}) = getiotmp(ioctx.io)
+gettwl(io::TextWidthLimiter) = io
+gettwl(io::IOContext{TextWidthLimiter}) = io.io
+
 # Uncomment this to debug display of a TextWidthLimiter (e.g., triggered by `print(limited, args1, args...)`)
 # Base.show(io::IO, twl::TextWidthLimiter) = error("do not display")
 
-function Base.print(io::TextWidthLimiter, s::Union{String,SubString{String}})
-    for c in s
-        print(io, c)
-    end
-end
-
-function Base.print(limiter::TextWidthLimiter, c::Char)
+function Base.write(limiter::TextWidthLimiter, c::Char)
     @assert limiter.width <= limiter.limit
+    n = 0
     if limiter.isclosed
-        !limiter.seen_esc && return   # if we've never seen an ANSI escape code, we don't have to look for the "closing" code
+        !limiter.seen_esc && return n  # if we've never seen an ANSI escape code, we don't have to look for the "closing" code
         status = limiter.esc_status = ansi_esc_status(limiter.esc_status, c)
         if status != NONE
             print(limiter.io, c)
-            limiter.width += textwidth(c)    # these should all be zero, but just in case...
+            n = ncodeunits(c)
         end
-        return
+        return n
     end
     cwidth = textwidth(c)   # TODO? Add Preferences to allow users to configure broken terminals, see https://discourse.julialang.org/t/graphemes-vs-chars/96118
     if limiter.width + cwidth <= limiter.limit - 1   # -1 saves space for '…'
         status = limiter.esc_status = ansi_esc_status(limiter.esc_status, c)
         if status != NONE
             limiter.seen_esc = true
+        else
+            limiter.width += cwidth
         end
         print(limiter.io, c)
-        limiter.width += cwidth
+        n = ncodeunits(c)
     else
         # close the output
         print(limiter.io, '…')
         limiter.width += 1
         limiter.isclosed = true
+        n = ncodeunits('…')
     end
+    return n
 end
 
-## Generic print
+function Base.write(limiter::TextWidthLimiter, s::Union{String,SubString{String}})
+    n = 0
+    for c in s
+        n += write(limiter, c)
+    end
+    return n
+end
 
-Base.print(limiter::TextWidthLimiter, x) = (print(limiter.iotmp, x); print(limiter, String(take!(limiter.iotmp))))
+writegeneric(limiter, x) = (write(getiotmp(limiter), x); write(gettwl(limiter), String(take!(getiotmp(limiter)))))
+printgeneric(limiter, x) = (print(getiotmp(limiter), x); print(gettwl(limiter), String(take!(getiotmp(limiter)))))
+ showgeneric(limiter, x) = (show(getiotmp(limiter), x); print(gettwl(limiter), String(take!(getiotmp(limiter)))))
 
-# ambiguity resolution
-Base.print(limiter::TextWidthLimiter, s::AbstractString) = invoke(print, Tuple{TextWidthLimiter, Any}, limiter, s)
-Base.print(limiter::TextWidthLimiter, s::AbstractChar) = invoke(print, Tuple{TextWidthLimiter, Any}, limiter, s)
-Base.print(limiter::TextWidthLimiter, s::Symbol) = invoke(print, Tuple{TextWidthLimiter, Any}, limiter, s)
-Base.print(limiter::TextWidthLimiter, f::Core.IntrinsicFunction) = invoke(print, Tuple{TextWidthLimiter, Any}, limiter, f)
-Base.print(limiter::TextWidthLimiter, f::Function) = invoke(print, Tuple{TextWidthLimiter, Any}, limiter, f)
-Base.print(limiter::TextWidthLimiter, uuid::Base.UUID) = invoke(print, Tuple{TextWidthLimiter, Any}, limiter, uuid)
-Base.print(limiter::TextWidthLimiter, uuid::Base.SHA1) = invoke(print, Tuple{TextWidthLimiter, Any}, limiter, uuid)
-Base.print(limiter::TextWidthLimiter, x::Union{Float16, Float32}) = invoke(print, Tuple{TextWidthLimiter, Any}, limiter, x)
-Base.print(limiter::TextWidthLimiter, x::Unsigned) = invoke(print, Tuple{TextWidthLimiter, Any}, limiter, x)
-Base.print(limiter::TextWidthLimiter, v::VersionNumber) = invoke(print, Tuple{TextWidthLimiter, Any}, limiter, v)
+Base.write(limiter::IOContext{TextWidthLimiter}, c::Char) = writegeneric(limiter, c)
+Base.write(limiter::IOContext{TextWidthLimiter}, s::Union{String,SubString{String}}) = writegeneric(limiter, s)
 
-## Generic show
+for IOT in (TextWidthLimiter, IOContext{TextWidthLimiter})
+    @eval Base.write(limiter::$IOT, s::Symbol) = writegeneric(limiter, s)
+    @eval Base.show(limiter::$IOT, c::AbstractChar) = showgeneric(limiter, c)
+    @eval Base.show(limiter::$IOT, n::BigInt) = showgeneric(limiter, n)
+    @eval Base.show(limiter::$IOT, n::Signed) = showgeneric(limiter, n)
+end
 
-Base.show(limiter::TextWidthLimiter, x) = (show(limiter.iotmp, x); print(limiter, String(take!(limiter.iotmp))))
-
-Base.show(limiter::TextWidthLimiter, c::Char) = print(limiter, '\'', c, '\'')
-Base.show(limiter::TextWidthLimiter, s::AbstractString) = print(limiter, '\"', s, '\"')
 
 Base.iswritable(limiter::TextWidthLimiter) = !limiter.isclosed || limiter.seen_esc
 
@@ -95,7 +99,7 @@ Thus, it's acceptable to check `iswritable(limiter)` and skip further writing if
 Base.closewrite(limiter::TextWidthLimiter) = limiter.isclosed = true
 
 function Base.take!(limiter::TextWidthLimiter)
-    @assert limiter.esc_status ∈ (NONE, FINAL)
+    @assert limiter.esc_status ∈ (NONE, FINAL, C0)
     limiter.isclosed = iszero(limiter.limit)
     limiter.width = 0
     limiter.esc_status = NONE
