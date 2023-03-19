@@ -88,6 +88,17 @@ end
     printstyled(IOContext(limiter, :color=>true), "abcdef"; color=:red)
     @test iswritable(limiter)    # because seen_esc == true
     @test String(take!(limiter)) == "\e[31mabcd…\e[39m"
+    # Placement of escape initiation relative to width is robust
+    print(limiter, "1\e[31m23456\e[39m")
+    @test String(take!(limiter)) == "1\e[31m234…\e[39m"
+    print(limiter, "12\e[31m3456\e[39m")
+    @test String(take!(limiter)) == "12\e[31m34…\e[39m"
+    print(limiter, "123\e[31m456\e[39m")
+    @test String(take!(limiter)) == "123\e[31m4…\e[39m"
+    print(limiter, "1234\e[31m56\e[39m")
+    @test String(take!(limiter)) == "1234\e[31m…\e[39m"
+    print(limiter, "12345\e[31m6\e[39m")
+    @test String(take!(limiter)) == "1234…"
 
     # Malformed ANSI characters
     limiter = TextWidthLimiter(IOBuffer(), 5)

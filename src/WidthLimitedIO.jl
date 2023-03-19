@@ -39,7 +39,8 @@ function Base.write(limiter::TextWidthLimiter, c::Char)
         return n
     end
     cwidth = textwidth(c)   # TODO? Add Preferences to allow users to configure broken terminals, see https://discourse.julialang.org/t/graphemes-vs-chars/96118
-    if limiter.width + cwidth <= limiter.limit - 1   # -1 saves space for '…'
+    in_esc = limiter.esc_status ∈ (ESCAPE1, ESCAPE, INTERMEDIATE, PARAMETER)
+    if limiter.width + cwidth < limiter.limit || in_esc    # < saves space for '…'
         status = limiter.esc_status = ansi_esc_status(limiter.esc_status, c)
         if status != NONE
             limiter.seen_esc = true
